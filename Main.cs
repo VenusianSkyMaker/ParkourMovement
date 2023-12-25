@@ -23,7 +23,7 @@ namespace ParkourMovement
 
         //stat changes
 
-        //WallRun / WallJump
+        //WallRun / WallJump 
         public float CurrWallCheckLength = 1f;
         public float WRStickMult = 0.3f;
         public float WRFwdMult = 1;
@@ -45,7 +45,7 @@ namespace ParkourMovement
         public float initialFeetDrag, SlFeetDrag = 0f;
         public float SlSpeedMult = 6400f;
         public float SlEndTime;
-        public float maxSlVel = 3f;
+        public float maxSlVel = 0.162f;
         public Seat SlidingSeat;
 
         public static bool isReady = false;
@@ -54,7 +54,7 @@ namespace ParkourMovement
         private int framesUngrounded = 0;
 
         private Vector3 dir;
-        private float seatVelIncr = 0.55f;
+        private float seatVelIncr = 0.95f;
         private float currSlVel;
 
         private LayerMask WallMask;
@@ -309,7 +309,7 @@ namespace ParkourMovement
                     crouch = Player.controllerRig.GetCrouch();
                     if (isInSlide)
                     {
-                        if(Time.time >= SlEndTime)
+                        if(Time.time >= SlEndTime || crouch > MinSlCrouch)
                         {
                             isInSlide = false;
                             SlidingSeat.DeRegister();
@@ -317,8 +317,10 @@ namespace ParkourMovement
                         }
                         else
                         {
-                            currSlVel = Mathf.Clamp(currSlVel + seatVelIncr, 0, maxSlVel);
-                            SlidingSeat.seatRb.MovePosition(SlidingSeat.transform.position + currSlVel * dir);
+                            currSlVel = Mathf.Clamp(currSlVel + seatVelIncr * Time.deltaTime, 0, maxSlVel);
+                            Vector3 t = SlidingSeat.transform.position + currSlVel * dir;
+                            SlidingSeat.seatRb.MovePosition(t);
+                            
                         }
                     }
                     else
@@ -329,12 +331,12 @@ namespace ParkourMovement
                             SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
                             SlidingSeat.seatRb = SlidingSeat.gameObject.GetComponent<Rigidbody>();
                             SlidingSeat.transform.position = pelvis.position;
-                            SlidingSeat.transform.forward = pelvis.transform.forward;
-                            dir = SlidingSeat.transform.forward;
+                            dir = pelvis.transform.forward;
                             dir = new Vector3(dir.x, 0,dir.z);
                             currSlVel = 0;
                             SlidingSeat.Register(RM);
-                            SlEndTime = Time.time +  3;
+                            SlidingSeat.transform.forward = pelvis.transform.forward;
+                            SlEndTime = Time.time +  2;
                         }
                     }
                 }
