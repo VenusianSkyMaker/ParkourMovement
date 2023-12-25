@@ -10,12 +10,14 @@ using SLZ.Vehicle;
 using System.Linq;
 using System.Reflection;
 using System.IO;
+using SLZ.Props;
 
 namespace ParkourMovement
 {
     public class ParkourMovementMod : MelonMod
     {
         public static ParkourMovementMod Instance;
+        public static bool isReady = false;
         private PhysicsRig Phys;
         private Transform head;
         private Rigidbody pelvis;
@@ -37,27 +39,26 @@ namespace ParkourMovement
         public float wallRunAngle;
         public float MaxWRSpeed = 8.25f;
         public Camera cam;
+        private LayerMask WallMask;
+        
+        private bool canWallRun = true;
+        private bool isInWR = false;
+        private int framesUngrounded = 0;
 
         //Slide
         public float minSlVel = 0.7f;
         public float crouch, MinSlCrouch = -0.5f;
         public bool isInSlide = false;
-        public float initialFeetDrag, SlFeetDrag = 0f;
         public float SlSpeedMult = 6400f;
         public float SlEndTime;
         public float maxSlVel = 0.162f;
         public Seat SlidingSeat;
-
-        public static bool isReady = false;
-        private bool canWallRun = true;
-        private bool isInWR = false;
-        private int framesUngrounded = 0;
-
         private Vector3 dir;
         private float seatVelIncr = 0.95f;
         private float currSlVel;
+        private int missedCrouchFrames, maxMissedCrouch = 20;
 
-        private LayerMask WallMask;
+        
 
         //Bundles
         public static AssetBundle SlidingSeatBundle;
@@ -73,6 +74,9 @@ namespace ParkourMovement
         public static bool isWREnabled { get; private set; }
         public static MelonPreferences_Entry<bool> MelonPrefWREnabled { get; private set; }
         public static BoolElement WREnabledElement { get; private set; }
+        public static MelonPreferences_Entry<bool> MelonPrefWJEnabled { get; private set; }
+        public static bool isWJEnabled { get; private set; }
+        public static BoolElement WJEnabledElement { get; private set; }
         public static bool isSlEnabled { get; private set; }
         public static MelonPreferences_Entry<bool> MelonPrefSlEnabled { get; private set; }
         public static BoolElement SlEnabledElement { get; private set; }
@@ -113,6 +117,8 @@ namespace ParkourMovement
             isSlEnabled = MelonPrefSlEnabled.Value;
             MelonPrefDJEnabled = MelonPrefCategory.CreateEntry<bool>("isDJEnabled", true, "Double Jump Enabled");
             isDJEnabled = MelonPrefDJEnabled.Value;
+            MelonPrefWJEnabled = MelonPrefCategory.CreateEntry<bool>("isWJEnabled", true, "Wall Jump Enabled");
+            isWJEnabled = MelonPrefWJEnabled.Value;
         }
         public static void SetupBoneMenu()
         {
@@ -121,6 +127,7 @@ namespace ParkourMovement
             WREnabledElement = BoneMenuCategory.CreateBoolElement("Wallrun Toggle", Color.white, isWREnabled, new Action<bool>(OnSetWREnabled));
             SlEnabledElement = BoneMenuCategory.CreateBoolElement("Slide Toggle", Color.white, isSlEnabled, new Action<bool>(OnSetSlEnabled));
             DJEnabledElement = BoneMenuCategory.CreateBoolElement("Double Jump Toggle", Color.white, isDJEnabled, new Action<bool>(OnSetDJEnabled));
+            WJEnabledElement = BoneMenuCategory.CreateBoolElement("Wall Jump Toggle", Color.white, isWJEnabled, new Action<bool>(OnSetWJEnabled));
         }
         public static void OnSetEnabled(bool value)
         {
@@ -147,11 +154,22 @@ namespace ParkourMovement
             MelonPrefDJEnabled.Value = value;
             MelonPrefCategory.SaveToFile(false);
         }
+        public static void OnSetWJEnabled(bool value)
+        {
+            isWJEnabled = value;
+            MelonPrefWJEnabled.Value = value;
+            MelonPrefCategory.SaveToFile(false);
+        }
+
 
         public override void OnPreferencesLoaded()
         {
             isEnabled = MelonPrefEnabled.Value;
             EnabledElement.SetValue(isEnabled);
+            WREnabledElement.SetValue(isWREnabled);
+            SlEnabledElement.SetValue(isSlEnabled);
+            DJEnabledElement.SetValue(isDJEnabled);
+            WJEnabledElement.SetValue(isWJEnabled);
         }
 
         // end of Preferences
@@ -171,7 +189,6 @@ namespace ParkourMovement
                 head = Player.playerHead;
                 pelvis = Phys.torso.rbPelvis;
                 isReady = true;
-                initialFeetDrag = Phys.rbFeet.drag;
             }
             //wallrun
             if (isEnabled && isReady)
@@ -189,12 +206,12 @@ namespace ParkourMovement
                         CurrWallCheckLength = normWallCheckLength;
                     }
 
-                    if (isInWR && isDJEnabled)
+                    if (isInWR)
                     {
                         CurrWallCheckLength = WRWallCheckLength;
-
+                        Player.remapRig.doubleJump = false;
                         //wallJump
-                        if (Player.rightController.GetAButtonDown())
+                        if (Player.rightController.GetAButtonDown() && isWJEnabled)
                         {
                             
                             pelvis.velocity = Vector3.zero;
@@ -204,7 +221,7 @@ namespace ParkourMovement
                     }
                     else
                     {
-                        wallRunAngle = 0;
+                        Player.remapRig.doubleJump = isDJEnabled;
                     }
 
                     if (framesUngrounded >= WRMinFU && canWallRun && Phys.wholeBodyVelocity.magnitude > minVelForWR)
@@ -256,88 +273,43 @@ namespace ParkourMovement
                 
                 if(isSlEnabled)
                 {
-                    /*
-                    FramesInSlide += 1;
-                    crouch = Player.controllerRig.GetCrouch();
-                    MelonLogger.Msg("1st Pass: slide" + isInSlide);
-                    //slide continuations
-                    if (Time.time >= SlEndTime && isInSlide)
+                    
+                    //crouch = Player.controllerRig.GetCrouch();
+                    crouch = Player.rightController._thumbstickAxis.y;
+                    
+                    if (isInSlide)
+                    {
+                          missedCrouchFrames++;
+                    }
+                    if(Time.time >= SlEndTime || crouch > MinSlCrouch)
                     {
                         isInSlide = false;
                         SlidingSeat.DeRegister();
-                        MelonLogger.Warning("Deregistered");
-                        SlidingSeat.transform.GetChild(0).gameObject.SetActive(true);
-                    }
-                    else if (isInSlide && Time.time < SlEndTime && crouch < MinSlCrouch && FramesInSlide > MinFramesInSlide)
-                    {
-                        //continue slide
-                        //SlidingSeat.seatRb.velocity = new Vector3(SlidingSeatObj.transform.forward.x * SlSpeedMult / 2, 0, SlidingSeatObj.transform.forward.z * SlSpeedMult / 2);
-                        SlidingSeat.seatRb.velocity = SlidingSeat.transform.forward * 500;
-                    }
-
-                    MelonLogger.Msg("2nd Pass: slide" + isInSlide);
-                    //is not in wallrun, is not in slide (prevent infinite slide speed), has minimum start velocity, doesnt exceed maximum vertical velocity
-                    if (!isInWR && !isInSlide && Phys.wholeBodyVelocity.magnitude > minSlVel && Mathf.Abs(Phys.wholeBodyVelocity.y) < ungVel)
-                    {
-                        if(crouch < MinSlCrouch && SlidingSeat == null)
-                        {
-                            isInSlide = true;
-                            SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
-                            SlidingSeat.transform.position = pelvis.position;
-                            SlidingSeatObj.transform.eulerAngles = new Vector3(0, pelvis.rotation.eulerAngles.y, 0);
-                            SlidingSeat.Register(Player.rigManager);
-                            //SlidingSeat.seatRb.velocity = new Vector3(SlidingSeatObj.transform.forward.x * SlSpeedMult / 2, 0, SlidingSeatObj.transform.forward.z * SlSpeedMult / 2);
-                            SlidingSeat.seatRb.velocity = SlidingSeat.transform.forward * 500;
-                            MelonLogger.Msg("SeatCreated");
-                            FramesInSlide = 0;
-
-                        }else if(crouch < MinSlCrouch && SlidingSeat.rigManager != Player.rigManager)
-                        {
-                            isInSlide = true;
-                            SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
-                            SlidingSeat.transform.position = pelvis.position; 
-                            SlidingSeatObj.transform.eulerAngles = new Vector3(0, pelvis.rotation.eulerAngles.y, 0);
-                            //SlidingSeat.seatRb.velocity = new Vector3(SlidingSeatObj.transform.forward.x * SlSpeedMult / 2, 0, SlidingSeatObj.transform.forward.z * SlSpeedMult / 2);
-                            SlidingSeat.seatRb.velocity = SlidingSeat.transform.forward * 500;
-                            SlidingSeat.Register(Player.rigManager);
-                            MelonLogger.Msg("SeatCreated");
-                            FramesInSlide = 0;
-                        }
-                    }
-
-                    */
-                    crouch = Player.controllerRig.GetCrouch();
-                    if (isInSlide)
-                    {
-                        if(Time.time >= SlEndTime || crouch > MinSlCrouch)
-                        {
-                            isInSlide = false;
-                            SlidingSeat.DeRegister();
-                            GameObject.Destroy(SlidingSeat.gameObject);
-                        }
-                        else
-                        {
-                            currSlVel = Mathf.Clamp(currSlVel + seatVelIncr * Time.deltaTime, 0, maxSlVel);
-                            Vector3 t = SlidingSeat.transform.position + currSlVel * dir;
-                            SlidingSeat.seatRb.MovePosition(t);
-                            
-                        }
+                        GameObject.Destroy(SlidingSeat.gameObject);
                     }
                     else
                     {
-                        if(crouch < MinSlCrouch && Phys.wholeBodyVelocity.magnitude > minSlVel && Mathf.Abs(Phys.wholeBodyVelocity.y) < minSlVel) 
-                        {
-                            isInSlide = true;
-                            SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
-                            SlidingSeat.seatRb = SlidingSeat.gameObject.GetComponent<Rigidbody>();
-                            SlidingSeat.transform.position = pelvis.position;
-                            dir = pelvis.transform.forward;
-                            dir = new Vector3(dir.x, 0,dir.z);
-                            currSlVel = 0;
-                            SlidingSeat.Register(RM);
-                            SlidingSeat.transform.forward = pelvis.transform.forward;
-                            SlEndTime = Time.time +  2;
-                        }
+                        currSlVel = Mathf.Clamp(currSlVel + seatVelIncr * Time.deltaTime, 0, maxSlVel);
+                        Vector3 t = SlidingSeat.transform.position + currSlVel * dir;
+                        SlidingSeat.seatRb.MovePosition(t);
+                    }
+                }
+                else
+                {
+                    if(crouch < MinSlCrouch && Phys.wholeBodyVelocity.magnitude > minSlVel && Mathf.Abs(Phys.wholeBodyVelocity.y) < minSlVel) 
+                    {
+                        isInSlide = true;
+                        SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
+                        SlidingSeat.seatRb = SlidingSeat.gameObject.GetComponent<Rigidbody>();
+                        SlidingSeat.transform.position = pelvis.position;
+                        dir = pelvis.transform.forward;
+                        dir = new Vector3(dir.x, 0,dir.z);
+                        currSlVel = 0;
+                        SlidingSeat.Register(RM);
+                        SlidingSeat.transform.forward = pelvis.transform.forward;
+                        SlidingSeat.transform.eulerAngles = new Vector3(-50, SlidingSeat.transform.eulerAngles.y, SlidingSeat.transform.eulerAngles.z);
+                        SlEndTime = Time.time +  2;
+                        missedCrouchFrames = 0;
                     }
                 }
             }
