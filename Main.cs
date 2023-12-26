@@ -22,6 +22,7 @@ namespace ParkourMovement
         private Transform head;
         private Rigidbody pelvis;
         private RigManager RM;
+        private BaseController controller;
 
         //stat changes
 
@@ -51,12 +52,12 @@ namespace ParkourMovement
         public bool isInSlide = false;
         public float SlSpeedMult = 6400f;
         public float SlEndTime;
-        public float maxSlVel = 0.162f;
+        public float maxSlVel = 0.15f;//0.162f 
         public Seat SlidingSeat;
         private Vector3 dir;
-        private float seatVelIncr = 0.95f;
+        private float seatVelIncr = 0.35f;//.99f
         private float currSlVel;
-        private int missedCrouchFrames, maxMissedCrouch = 20;
+        private float seatGrav = 2.6f;//subtracts y component, keep this positive
 
         
 
@@ -174,20 +175,22 @@ namespace ParkourMovement
 
         // end of Preferences
 
-        public override void OnSceneWasLoaded(int buildIndex, string sceneName)
-        {
-            
-        }
         public override void OnFixedUpdate()
         {
             
             //check for nulls
-            if(Player.physicsRig != null)
+            if(Player.physicsRig != null && !isReady)
             {
                 RM = Player.rigManager;
+                
                 Phys = Player.physicsRig;
+                
                 head = Player.playerHead;
+                
                 pelvis = Phys.torso.rbPelvis;
+                
+                controller = Player.rightController;
+                
                 isReady = true;
             }
             //wallrun
@@ -273,43 +276,46 @@ namespace ParkourMovement
                 
                 if(isSlEnabled)
                 {
-                    
-                    //crouch = Player.controllerRig.GetCrouch();
-                    crouch = Player.rightController._thumbstickAxis.y;
+                    crouch = controller._thumbstickAxis.y;
                     
                     if (isInSlide)
                     {
-                          missedCrouchFrames++;
-                    }
-                    if(Time.time >= SlEndTime || crouch > MinSlCrouch)
-                    {
-                        isInSlide = false;
-                        SlidingSeat.DeRegister();
-                        GameObject.Destroy(SlidingSeat.gameObject);
+                        if(Time.time >= SlEndTime || crouch > MinSlCrouch)
+                        {
+                            isInSlide = false;
+                            pelvis.velocity = Vector3.zero;
+                            SlidingSeat.DeRegister();
+                            GameObject.Destroy(SlidingSeat.gameObject);
+                        }
+                        else
+                        {
+                            currSlVel = Mathf.Clamp(currSlVel + seatVelIncr * Time.deltaTime, 0, maxSlVel);
+                            Vector3 t = SlidingSeat.transform.position + currSlVel * dir;
+                            if(!Physics.Raycast(SlidingSeat.transform.position, Vector3.down, 0.2f, WallMask))
+                            {
+                                t.y -= seatGrav * Time.deltaTime;
+                            }
+                            
+                            SlidingSeat.seatRb.MovePosition(t);
+                        }
                     }
                     else
                     {
-                        currSlVel = Mathf.Clamp(currSlVel + seatVelIncr * Time.deltaTime, 0, maxSlVel);
-                        Vector3 t = SlidingSeat.transform.position + currSlVel * dir;
-                        SlidingSeat.seatRb.MovePosition(t);
-                    }
-                }
-                else
-                {
-                    if(crouch < MinSlCrouch && Phys.wholeBodyVelocity.magnitude > minSlVel && Mathf.Abs(Phys.wholeBodyVelocity.y) < minSlVel) 
-                    {
-                        isInSlide = true;
-                        SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
-                        SlidingSeat.seatRb = SlidingSeat.gameObject.GetComponent<Rigidbody>();
-                        SlidingSeat.transform.position = pelvis.position;
-                        dir = pelvis.transform.forward;
-                        dir = new Vector3(dir.x, 0,dir.z);
-                        currSlVel = 0;
-                        SlidingSeat.Register(RM);
-                        SlidingSeat.transform.forward = pelvis.transform.forward;
-                        SlidingSeat.transform.eulerAngles = new Vector3(-50, SlidingSeat.transform.eulerAngles.y, SlidingSeat.transform.eulerAngles.z);
-                        SlEndTime = Time.time +  2;
-                        missedCrouchFrames = 0;
+                        if(crouch < MinSlCrouch && Phys.wholeBodyVelocity.magnitude > minSlVel && Mathf.Abs(Phys.wholeBodyVelocity.y) < minSlVel) 
+                        {
+                            isInSlide = true;
+                            SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
+                            SlidingSeat.seatRb = SlidingSeat.gameObject.GetComponent<Rigidbody>();
+                            SlidingSeat.transform.position = pelvis.position;
+                            dir = head.transform.forward;
+                            dir = new Vector3(dir.x, 0,dir.z);
+                            currSlVel = 0;
+                            SlidingSeat.transform.eulerAngles = new Vector3(70, 0, 0); 
+                            SlidingSeat.Register(RM);
+                            SlidingSeat.transform.forward = head.transform.forward;
+                            SlidingSeat.transform.eulerAngles = new Vector3(0, SlidingSeat.transform.eulerAngles.y, SlidingSeat.transform.eulerAngles.z);
+                            SlEndTime = Time.time +  2;
+                        }
                     }
                 }
             }
