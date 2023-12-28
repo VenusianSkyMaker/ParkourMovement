@@ -11,6 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.IO;
 using SLZ.Props;
+using TriangleNet.Logging;
 
 namespace ParkourMovement
 {
@@ -29,30 +30,30 @@ namespace ParkourMovement
         //WallRun / WallJump 
         public float CurrWallCheckLength = 1f;
         public float WRStickMult = 0.3f;
-        public float WRFwdMult = 1;
+        public static float WRFwdMult = 1;
         public float WRUptimeMult = 0.25f;
         public float WRMinFU = 1;
         public float WRWallCheckLength = 3f;
-        public float normWallCheckLength = 1f;
-        public float WJForceMult = 40f;
+        public static float normWallCheckLength = 1f;
+        public static float WJForceMult = 60f;
         private float ungVel = 0.5f;
         private float minVelForWR = 0.4f;
         public float wallRunAngle;
         public float MaxWRSpeed = 8.25f;
         public Camera cam;
         private LayerMask WallMask;
-        
+
         private bool canWallRun = true;
         private bool isInWR = false;
         private int framesUngrounded = 0;
 
         //Slide
-        public float minSlVel = 0.7f;
+        public float minSlVel = 1.2f;
         public float crouch, MinSlCrouch = -0.5f;
         public bool isInSlide = false;
         public float SlSpeedMult = 6400f;
         public float SlEndTime;
-        public float maxSlVel = 0.15f;//0.162f 
+        public static float maxSlVel = 0.15f;//0.162f 
         public Seat SlidingSeat;
         private Vector3 dir;
         private float seatVelIncr = 0.35f;//.99f
@@ -65,6 +66,7 @@ namespace ParkourMovement
         public static AssetBundle SlidingSeatBundle;
         public static GameObject SlidingSeatObj;
         public const string SSBundleName = "ParkourMovement.dependencies.slidingseat.bundle";
+        
 
         //Preferences
         public static MelonPreferences_Category MelonPrefCategory { get; private set; }
@@ -84,29 +86,15 @@ namespace ParkourMovement
         public static MelonPreferences_Entry<bool> MelonPrefDJEnabled { get; private set; }
         public static bool isDJEnabled { get; private set; }
         public static BoolElement DJEnabledElement { get; private set; }
+        public static MelonPreferences_Entry<float> MelonPrefWRFMult { get; private set; }
+        public static FloatElement WRFMultElement { get; private set; }
+        public static MelonPreferences_Entry<float> MelonPrefWRWCLength { get; private set; }
+        public static FloatElement WRWCLengthElement { get; private set; }
+        public static MelonPreferences_Entry<float> MelonPrefWJMult { get; private set; }
+        public static FloatElement WJMultElement { get; private set; }
+        public static MelonPreferences_Entry<float> MelonPrefMSLVel { get; private set; }
+        public static FloatElement MSLVelElement { get; private set; }
 
-
-
-
-        public override void OnInitializeMelon()
-        {
-            Instance = this;
-            WallMask |= (1 << 0);
-            WallMask |= (1 << 13);
-            SetupMelonPrefs();
-            SetupBoneMenu();
-
-
-
-            SlidingSeatBundle = EmbeddedAssembly.LoadFromAssembly(Assembly.GetExecutingAssembly(), SSBundleName);
-            if (SlidingSeatBundle == null)
-            {
-                MelonLogger.Msg("failed to load spawnable target bundle, check dll/ check you made spawnable target bundle into embedded resource");
-            }
-            var refs = SlidingSeatBundle.LoadAllAssets();
-            refs[0].hideFlags = HideFlags.DontUnloadUnusedAsset;
-            SlidingSeatObj = refs[0].TryCast<GameObject>(); 
-        }
         public static void SetupMelonPrefs()
         {
             MelonPrefCategory = MelonPreferences.CreateCategory("Parkour");
@@ -120,6 +108,19 @@ namespace ParkourMovement
             isDJEnabled = MelonPrefDJEnabled.Value;
             MelonPrefWJEnabled = MelonPrefCategory.CreateEntry<bool>("isWJEnabled", true, "Wall Jump Enabled");
             isWJEnabled = MelonPrefWJEnabled.Value;
+
+            MelonPrefWRFMult = MelonPrefCategory.CreateEntry<float>("WRFMult", 1, "Wallrun Forward Multiplier");
+            WRFwdMult = MelonPrefWRFMult.Value;
+
+            MelonPrefWRWCLength = MelonPrefCategory.CreateEntry<float>("WRWCLength", 1, "Wall Check Distance");
+            normWallCheckLength = MelonPrefWRWCLength.Value;
+
+            MelonPrefWJMult = MelonPrefCategory.CreateEntry<float>("WJMult", 60, "Wall Jump Multiplier");
+            WJForceMult = MelonPrefWJMult.Value;
+
+            MelonPrefMSLVel = MelonPrefCategory.CreateEntry<float>("MSLVel", 0.15f, "Max Slide Velocity");
+            maxSlVel = MelonPrefMSLVel.Value;
+
         }
         public static void SetupBoneMenu()
         {
@@ -129,6 +130,10 @@ namespace ParkourMovement
             SlEnabledElement = BoneMenuCategory.CreateBoolElement("Slide Toggle", Color.white, isSlEnabled, new Action<bool>(OnSetSlEnabled));
             DJEnabledElement = BoneMenuCategory.CreateBoolElement("Double Jump Toggle", Color.white, isDJEnabled, new Action<bool>(OnSetDJEnabled));
             WJEnabledElement = BoneMenuCategory.CreateBoolElement("Wall Jump Toggle", Color.white, isWJEnabled, new Action<bool>(OnSetWJEnabled));
+            WRFMultElement = BoneMenuCategory.CreateFloatElement("Wallrun Forward Mult", Color.white, WRFwdMult, 0.25f, 0, 10,new Action<float>(OnSetWRFwdMult));
+            WRWCLengthElement = BoneMenuCategory.CreateFloatElement("Wall Check Distance", Color.white, normWallCheckLength, 0.25f, .25f, 5, new Action<float>(OnSetWRWCLength));
+            WJMultElement = BoneMenuCategory.CreateFloatElement("Walljump Force Mult", Color.white, WJForceMult, 5f, 5f, 300f, new Action<float>(OnSetWJMult));
+            MSLVelElement = BoneMenuCategory.CreateFloatElement("Max Slide Velocity", Color.white, maxSlVel, .01f, .01f, .3f, new Action<float>(OnSetMSLVel));
         }
         public static void OnSetEnabled(bool value)
         {
@@ -161,6 +166,30 @@ namespace ParkourMovement
             MelonPrefWJEnabled.Value = value;
             MelonPrefCategory.SaveToFile(false);
         }
+        public static void OnSetWRFwdMult(float value)
+        {
+            WRFwdMult = value;
+            MelonPrefWRFMult.Value = value;
+            MelonPrefCategory.SaveToFile(false);
+        }
+        public static void OnSetWRWCLength(float value)
+        {
+            normWallCheckLength = value;
+            MelonPrefWRWCLength.Value = value;
+            MelonPrefCategory.SaveToFile(false);
+        }
+        public static void OnSetWJMult(float value)
+        {
+            WJForceMult = value;
+            MelonPrefWJMult.Value = value;
+            MelonPrefCategory.SaveToFile(false);
+        }
+        public static void OnSetMSLVel(float value)
+        {
+            maxSlVel = value;
+            MelonPrefMSLVel.Value = value;
+            MelonPrefCategory.SaveToFile(false);
+        }
 
 
         public override void OnPreferencesLoaded()
@@ -171,9 +200,34 @@ namespace ParkourMovement
             SlEnabledElement.SetValue(isSlEnabled);
             DJEnabledElement.SetValue(isDJEnabled);
             WJEnabledElement.SetValue(isWJEnabled);
+
+            WRFMultElement.SetValue(WRFwdMult);
+            WRWCLengthElement.SetValue(normWallCheckLength);
         }
 
         // end of Preferences
+
+
+        public override void OnInitializeMelon()
+        {
+            Instance = this;
+            WallMask |= (1 << 0);
+            WallMask |= (1 << 13);
+            SetupMelonPrefs();
+            SetupBoneMenu();
+
+            
+
+            SlidingSeatBundle = EmbeddedAssembly.LoadFromAssembly(Assembly.GetExecutingAssembly(), SSBundleName);
+            if (SlidingSeatBundle == null)
+            {
+                MelonLogger.Msg("failed to load spawnable target bundle, check dll/ check you made spawnable target bundle into embedded resource");
+            }
+            var refs = SlidingSeatBundle.LoadAllAssets();
+            refs[0].hideFlags = HideFlags.DontUnloadUnusedAsset;
+            SlidingSeatObj = refs[0].TryCast<GameObject>(); 
+        }
+        
 
         public override void OnFixedUpdate()
         {
@@ -192,13 +246,21 @@ namespace ParkourMovement
                 controller = Player.rightController;
                 
                 isReady = true;
+            }else if(Player.physicsRig == null)
+            {
+                isReady = false;
+                Phys = null;
+                head = null;
+                pelvis = null;
+                controller = null;
+                SlidingSeat = null;
             }
             //wallrun
             if (isEnabled && isReady)
             {
                 if(isWREnabled)//Wallrun and WallJump 
                 {
-                    if (Phys.wholeBodyVelocity.y < -ungVel || Phys.wholeBodyVelocity.y > ungVel)
+                    if (Mathf.Abs(Phys.wholeBodyVelocity.y) > ungVel)
                     {
                         framesUngrounded++;
                     }
@@ -280,7 +342,7 @@ namespace ParkourMovement
                     
                     if (isInSlide)
                     {
-                        if(Time.time >= SlEndTime || crouch > MinSlCrouch)
+                        if(Time.time >= SlEndTime || crouch > MinSlCrouch) //end crouch
                         {
                             isInSlide = false;
                             pelvis.velocity = Vector3.zero;
@@ -291,12 +353,12 @@ namespace ParkourMovement
                         {
                             currSlVel = Mathf.Clamp(currSlVel + seatVelIncr * Time.deltaTime, 0, maxSlVel);
                             Vector3 t = SlidingSeat.transform.position + currSlVel * dir;
-                            if(!Physics.Raycast(SlidingSeat.transform.position, Vector3.down, 0.2f, WallMask))
+                            if(!Physics.Raycast(SlidingSeat.transform.position + new Vector3(0, .3f, 0), Vector3.down, 0.5f, WallMask))
                             {
                                 t.y -= seatGrav * Time.deltaTime;
                             }
                             
-                            SlidingSeat.seatRb.MovePosition(t);
+                            SlidingSeat.seatRb.MovePosition(t); //note retry with physics based seat
                         }
                     }
                     else
@@ -306,15 +368,17 @@ namespace ParkourMovement
                             isInSlide = true;
                             SlidingSeat = GameObject.Instantiate(SlidingSeatObj).GetComponent<Seat>();
                             SlidingSeat.seatRb = SlidingSeat.gameObject.GetComponent<Rigidbody>();
+
                             SlidingSeat.transform.position = pelvis.position;
                             dir = head.transform.forward;
-                            dir = new Vector3(dir.x, 0,dir.z);
+                            dir = new Vector3(dir.x, 0,dir.z); //make dir parallel to ground
                             currSlVel = 0;
-                            SlidingSeat.transform.eulerAngles = new Vector3(70, 0, 0); 
+                            SlidingSeat.transform.eulerAngles = new Vector3(70, 0, 0); //has to be done before or it will rotate the head too
                             SlidingSeat.Register(RM);
                             SlidingSeat.transform.forward = head.transform.forward;
-                            SlidingSeat.transform.eulerAngles = new Vector3(0, SlidingSeat.transform.eulerAngles.y, SlidingSeat.transform.eulerAngles.z);
+                            SlidingSeat.transform.eulerAngles = new Vector3(0, SlidingSeat.transform.eulerAngles.y, SlidingSeat.transform.eulerAngles.z); //adjust rotations with rigs
                             SlEndTime = Time.time +  2;
+                            
                         }
                     }
                 }
