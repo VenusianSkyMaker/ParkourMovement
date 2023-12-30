@@ -92,6 +92,8 @@ namespace ParkourMovement
             MelonPrefs.SetupMelonPrefs();
             MelonPrefs.SetupBoneMenu();
 
+            Sliding.Setup();
+            WallStuff.Setup();
             
 
             SlidingSeatBundle = EmbeddedAssembly.LoadFromAssembly(Assembly.GetExecutingAssembly(), SSBundleName);

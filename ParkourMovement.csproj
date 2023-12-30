@@ -103,6 +103,8 @@
     <Compile Include="InternalHelpers\MelonPrefs.cs" />
     <Compile Include="Main.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Sliding.cs" />
+    <Compile Include="WallStuff.cs" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

@@ -12,6 +12,10 @@ namespace ParkourMovement
     static class Sliding
     {
         static ParkourMovementMod PM;
+        public static void Setup()
+        {
+            PM = ParkourMovementMod.Instance;
+        }
         public static void SetupSlide()
         {
             PM.isInSlide = true;

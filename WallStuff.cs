@@ -12,6 +12,11 @@ namespace ParkourMovement
     static class WallStuff
     {
         static ParkourMovementMod PM;
+
+        public static void Setup()
+        {
+            PM = ParkourMovementMod.Instance;
+        }
         public static void UpdateGroundedVariables()
         {
             if (Mathf.Abs(PM.Phys.wholeBodyVelocity.y) > PM.ungVel)
