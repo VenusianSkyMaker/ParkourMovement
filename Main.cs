@@ -34,7 +34,6 @@ namespace ParkourMovement
         public static float WJForceMult = 60f;
         public float ungVel = 0.5f;
         public float minVelForWR = 0.4f;
-        public float wallRunAngle;
         public float MaxWRSpeed = 8.25f;
         public Camera cam;
         public LayerMask WallMask;
@@ -63,7 +62,9 @@ namespace ParkourMovement
         public static AssetBundle SlidingSeatBundle;
         public static GameObject SlidingSeatObj;
         public const string SSBundleName = "ParkourMovement.dependencies.slidingseat.bundle";
+        public const string SSQBundleName = "ParkourMovement.dependencies.slidingseatquest.bundle";
 
+        
 
         //Preferences
 
@@ -95,8 +96,17 @@ namespace ParkourMovement
             Sliding.Setup();
             WallStuff.Setup();
             
+            if(!HelperMethods.IsAndroid())
+            {
+                SlidingSeatBundle = EmbeddedAssembly.LoadFromAssembly(Assembly.GetExecutingAssembly(), SSQBundleName);
+                MelonLogger.Msg("this is quest and it worked");
+            }
+            else
+            {
+                SlidingSeatBundle = EmbeddedAssembly.LoadFromAssembly(Assembly.GetExecutingAssembly(), SSBundleName);
+                MelonLogger.Msg("this is pc");
+            }
 
-            SlidingSeatBundle = EmbeddedAssembly.LoadFromAssembly(Assembly.GetExecutingAssembly(), SSBundleName);
             if (SlidingSeatBundle == null)
             {
                 MelonLogger.Msg("failed to load target bundle, check dll / check you made target bundle into embedded resource");

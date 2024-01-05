@@ -47,7 +47,13 @@ namespace ParkourMovement.InternalHelpers
             MemoryStream memoryStream = new MemoryStream();
             stream.CopyTo(memoryStream);
             byte[] bytes = memoryStream.ToArray();
-            return AssetBundle.LoadFromMemory(bytes);
+            var t = AssetBundle.LoadFromMemory(bytes);
+            if (t == null)
+            {
+                MelonLogger.Warning("why is this shit nulll aahhhhhhhhhhhhhhhhhhhhhhhhhh");
+                return null;
+            }
+            return t;
             
         }
         public static T LoadPersistentAsset<T>(this AssetBundle bundle, string name) where T : UnityEngine.Object
